@@ -27,3 +27,7 @@ class Card:
 	def __init__(self, value: Value, suit: Suit):
 		self.value = value
 		self.suit = suit
+
+
+	def __repr__(self):
+		return f'{self.Value.name} {self.Suit.name}'
