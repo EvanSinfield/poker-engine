@@ -3,7 +3,7 @@ import shlex
 import subprocess
 import sys
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
 
 class Player:
@@ -11,8 +11,10 @@ class Player:
 	line over stdin/stdout. The process stays alive for the whole game.
 	The bot's stderr is passed through to the engine's stderr for debugging."""
 
-	def __init__(self, command: str, name: Optional[str] = None):
+	def __init__(self, command: str, name: Optional[str] = None,
+			warn: Optional[Callable[[str], None]] = None):
 		self.name = name or command
+		self.warn = warn or (lambda msg: print(msg, file=sys.stderr))
 		self.connected = True
 		self.process = subprocess.Popen(
 			shlex.split(command),
@@ -71,8 +73,7 @@ class Player:
 
 	def disconnect(self, reason: str):
 		if self.connected:
-			print(f"[engine] player {self.name!r} disconnected: {reason}",
-				file=sys.stderr)
+			self.warn(f"[engine] player {self.name!r} disconnected: {reason}")
 		self.connected = False
 		self.close()
 

@@ -7,6 +7,7 @@ from poker_engine.domain.deck import create_deck
 from poker_engine.domain.game_state import GameState
 from poker_engine.domain.hand_evaluator import evaluate, hand_name
 from poker_engine.domain.player_state import PlayerState
+from poker_engine.engine.log import EngineLog
 from poker_engine.engine.pots import build_pots
 from poker_engine.player.manager import PlayerManager
 
@@ -23,10 +24,12 @@ class Game:
 			paths: List[str], blind: int = 10, timeout: float = 10.0,
 			max_hands: Optional[int] = None, verbose: bool = True,
 			player_manager: Optional[PlayerManager] = None,
-			game_number: int = 1, num_games: int = 1):
+			game_number: int = 1, num_games: int = 1,
+			logger: Optional[EngineLog] = None):
 		"""If player_manager is given, its already-running bots are used and
 		left running when the game ends (the caller closes them). Otherwise
-		the game starts its own bot processes and closes them at the end."""
+		the game starts its own bot processes and closes them at the end.
+		If logger is given it is used for all output instead of `verbose`."""
 		if noPlayers < 2:
 			raise ValueError("Must be at least 2 players.")
 		if len(paths) != noPlayers:
@@ -37,6 +40,7 @@ class Game:
 		self.rng = random.Random(seed)
 		self.max_hands = max_hands
 		self.verbose = verbose
+		self.logger = logger or EngineLog(verbose)
 		self.start_money = startMoney
 
 		self.game_state = GameState(blind)
@@ -46,15 +50,14 @@ class Game:
 		self.num_games = num_games
 		self.owns_manager = player_manager is None
 		if player_manager is None:
-			player_manager = PlayerManager(paths, timeout)
+			player_manager = PlayerManager(paths, timeout, warn=self.logger.warn)
 		elif len(player_manager.players) != noPlayers:
 			raise ValueError("Player manager has the wrong number of players.")
 		self.player_manager = player_manager
 
 
 	def log(self, msg: str):
-		if self.verbose:
-			print(msg, flush=True)
+		self.logger.info(msg)
 
 
 	# ---------------------------------------------------------------- game
