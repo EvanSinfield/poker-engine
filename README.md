@@ -19,11 +19,18 @@ Or `pip install -e .` and use the `poker-engine` command.
 | `--money` | 1000 | starting chips per player |
 | `--blind` | 10 | starting small blind (big blind is 2x); doubles every orbit of the button |
 | `--timeout` | 10 | seconds a bot has to answer an action request |
-| `--max-hands` | none | stop after this many hands |
+| `--max-hands` | none | stop after this many hands (per game) |
+| `--games` | 1 | number of games to play; with more than one, a summary of wins, average place and finishing positions per seat is printed at the end |
+| `--persistent-bots` | off | keep each bot process running across all `--games` (see below) |
 | `--quiet` | off | only print final standings |
 
 Each bot argument is a command line (split with shell rules), so arguments are allowed.
 Players are eliminated at 0 chips; the game ends when one player remains.
+
+With `--games N`, every game starts fresh bot processes by default, so bots keep no state
+between games. Add `--persistent-bots` to start each bot once and keep it running for the
+whole run, e.g. so a reinforcement-learning bot can update its policy from game to game. With `--seed S`, game *i* (counting from 0) is seeded with `S + i`, so the first
+game is the same as a single-game run with that seed.
 
 Tests: `PYTHONPATH=src python3 -m unittest discover -s tests`
 
@@ -33,11 +40,14 @@ The engine sends these messages. **Only `action_request` expects a reply**;
 bots must still read (and may ignore) the others. Write debug output to stderr,
 never stdout. Cards are two-character strings: rank `23456789TJQKA` + suit `shcd`, e.g. `"As"`, `"Td"`.
 
-- `game_start` — `seat`, `num_players`, `starting_money`, `small_blind`
+- `game_start` — `game_number` (from 1), `num_games`, `seat`, `num_players`, `starting_money`, `small_blind`
 - `hand_start` — `hand_number`, `seat`, `hand` (your two cards), `button`, `small_blind`, `big_blind`, `players`
 - `action_request` — see below; reply with one line
 - `hand_result` — `board`, `pots` (`[{amount, winners}]`), `showdown` (seat → `{hand, rank}` for hands shown), `history`, `players`
-- `game_over` — `standings` (`[{place, seat, money}]`)
+- `game_over` — `game_number`, `standings` (`[{place, seat, money}]`)
+- `match_over` — only with `--persistent-bots`, after the last game: `num_games`, `seat`,
+  `summary` (`[{seat, bot, wins, average_place, places}]`). Stdin is closed right after,
+  so save any model/checkpoint when you get this message or on EOF.
 
 ### `action_request`
 
@@ -76,6 +86,16 @@ They are clamped to `[raise.min, raise.max]`. An illegal raise/all-in becomes a 
 An unparseable reply checks if possible, otherwise folds.
 A bot that crashes or misses the timeout is disconnected and auto-checks/folds for
 the rest of the game.
+
+### Persistent bots and training
+
+With `--persistent-bots` a bot sees `game_start ... game_over` once per game in the same
+process, then `match_over`. Your seat stays the same in every game. A bot that crashes or
+times out stays disconnected (auto check/fold) for the rest of the run; it is not restarted.
+
+The `--timeout` clock starts when an `action_request` is sent. If your bot trains after
+`hand_result` or `game_over`, the next request waits in its stdin while it trains, and that
+time counts against it. Keep per-message work short or raise `--timeout`.
 
 ## Rules implemented
 
