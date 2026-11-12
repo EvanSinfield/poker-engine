@@ -21,7 +21,12 @@ class Game:
 
 	def __init__(self, seed: float, noPlayers: int, startMoney: int,
 			paths: List[str], blind: int = 10, timeout: float = 10.0,
-			max_hands: Optional[int] = None, verbose: bool = True):
+			max_hands: Optional[int] = None, verbose: bool = True,
+			player_manager: Optional[PlayerManager] = None,
+			game_number: int = 1, num_games: int = 1):
+		"""If player_manager is given, its already-running bots are used and
+		left running when the game ends (the caller closes them). Otherwise
+		the game starts its own bot processes and closes them at the end."""
 		if noPlayers < 2:
 			raise ValueError("Must be at least 2 players.")
 		if len(paths) != noPlayers:
@@ -37,7 +42,14 @@ class Game:
 		self.game_state = GameState(blind)
 		self.player_states = [PlayerState(startMoney) for _ in range(noPlayers)]
 		self.eliminated: List[int] = []	# seats, in order of elimination
-		self.player_manager = PlayerManager(paths, timeout)
+		self.game_number = game_number
+		self.num_games = num_games
+		self.owns_manager = player_manager is None
+		if player_manager is None:
+			player_manager = PlayerManager(paths, timeout)
+		elif len(player_manager.players) != noPlayers:
+			raise ValueError("Player manager has the wrong number of players.")
+		self.player_manager = player_manager
 
 
 	def log(self, msg: str):
@@ -53,6 +65,8 @@ class Game:
 			for i in range(len(self.player_states)):
 				self.player_manager.notify(i, {
 					"type": "game_start",
+					"game_number": self.game_number,
+					"num_games": self.num_games,
 					"seat": i,
 					"num_players": len(self.player_states),
 					"starting_money": self.start_money,
@@ -71,10 +85,13 @@ class Game:
 				self.log(f"  {s['place']}. seat {s['seat']} ({s['money']} chips)")
 			for i in range(len(self.player_states)):
 				self.player_manager.notify(i, {
-					"type": "game_over", "standings": standings})
+					"type": "game_over",
+					"game_number": self.game_number,
+					"standings": standings})
 			return standings
 		finally:
-			self.player_manager.close()
+			if self.owns_manager:
+				self.player_manager.close()
 
 
 	def standings(self) -> List[dict]:

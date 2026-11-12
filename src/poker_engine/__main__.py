@@ -22,6 +22,9 @@ def main(argv=None) -> int:
 	parser.add_argument("--games", type=int, default=1,
 		help="number of games to play, each with fresh bot processes "
 			"(default 1). With --seed, game i uses seed + i")
+	parser.add_argument("--persistent-bots", action="store_true",
+		help="start each bot once and keep it running across all games "
+			"(e.g. for training); by default bots are restarted every game")
 	parser.add_argument("--quiet", action="store_true")
 	args = parser.parse_args(argv)
 
@@ -35,7 +38,8 @@ def main(argv=None) -> int:
 
 	try:
 		result = run_games(args.games, args.seed, args.money, args.bots,
-			on_game_start=announce, blind=args.blind, timeout=args.timeout,
+			on_game_start=announce,
+			persistent_bots=args.persistent_bots, blind=args.blind, timeout=args.timeout,
 			max_hands=args.max_hands, verbose=not args.quiet)
 	except (ValueError, OSError) as e:
 		print(f"Error: {e}", file=sys.stderr)
