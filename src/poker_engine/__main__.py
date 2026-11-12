@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from poker_engine.engine.log import EngineLog
-from poker_engine.engine.match import run_games
+from poker_engine.engine.match import game_seed, run_games
 
 
 def format_seed(seed: float) -> str:
@@ -32,15 +32,16 @@ def resolve_command(command: str) -> str:
 	return shlex.join(resolved)
 
 
-def log_header(log: EngineLog, args, argv: List[str], seed_was_random: bool,
-		started: datetime):
+HAND_LOG_MARKER = "==================== hand log ===================="
+
+
+def run_info_lines(args, argv: List[str], seed_was_random: bool) -> List[str]:
+	"""Command line, settings and bots: everything needed to rerun."""
 	seed = format_seed(args.seed)
 	if seed_was_random:
 		seed += " (chosen at random; pass --seed to reproduce)"
 	max_hands = args.max_hands if args.max_hands is not None else "none"
 	lines = [
-		"# poker-engine log",
-		f"started:          {started.isoformat(timespec='seconds')}",
 		f"command:          {shlex.join(['python3', '-m', 'poker_engine'] + argv)}",
 		f"working dir:      {os.getcwd()}",
 		"",
@@ -60,9 +61,62 @@ def log_header(log: EngineLog, args, argv: List[str], seed_was_random: bool,
 		resolved = resolve_command(command)
 		if resolved != command:
 			lines.append(f"          resolved: {resolved}")
-	lines.append("")
-	for line in lines:
-		log.file_only(line)
+	return lines
+
+
+def summary_table(summary: List[dict]) -> List[str]:
+	lines = [f"  {'seat':>4}  {'wins':>5}  {'avg place':>9}  "
+		f"{'finishes 1st,2nd..':<18}  bot"]
+	for s in summary:
+		places = " ".join(str(c) for c in s["places"])
+		lines.append(f"  {s['seat']:>4}  {s['wins']:>5}  {s['average_place']:>9.2f}"
+			f"  {places:<18}  {s['bot']}")
+	return lines
+
+
+def result_lines(args, result: Optional[dict]) -> List[str]:
+	if result is None:
+		return ["results:          none"]
+	bots = args.bots
+	if args.games == 1:
+		standings = result["games"][0]
+		lines = [f"final standings ({result['hands'][0]} hands):"]
+		width = max(len(str(s["money"])) for s in standings)
+		for s in standings:
+			lines.append(f"  {s['place']}. seat {s['seat']}  "
+				f"{s['money']:>{width}} chips  {bots[s['seat']]}")
+		return lines
+
+	lines = [f"summary over {args.games} games:"] + summary_table(result["summary"])
+	lines += ["", "games (finishing order by seat):"]
+	for i, (standings, hands) in enumerate(zip(result["games"], result["hands"])):
+		order = ", ".join(str(s["seat"]) for s in standings)
+		lines.append(f"  game {i + 1:>{len(str(args.games))}} "
+			f"(seed {format_seed(game_seed(args.seed, i))}, {hands} hands): {order}")
+	return lines
+
+
+def header_text(status: str, started: datetime, finished: Optional[datetime],
+		results: List[str], run_info: List[str]) -> str:
+	lines = ["# poker-engine log", f"status:           {status}",
+		f"started:          {started.isoformat(timespec='seconds')}"]
+	if finished is not None:
+		elapsed = (finished - started).total_seconds()
+		lines.append(f"finished:         {finished.isoformat(timespec='seconds')}"
+			f" ({elapsed:.1f}s)")
+	lines += [""] + results + [""] + run_info + ["", HAND_LOG_MARKER, ""]
+	return "\n".join(lines) + "\n"
+
+
+def finalize_log(path: str, provisional: str, final: str):
+	"""Swap the provisional header for the final one (results first),
+	keeping the hand log that was streamed to the file during the run."""
+	with open(path, encoding="utf-8") as f:
+		body = f.read()[len(provisional):]
+	tmp = path + ".tmp"
+	with open(tmp, "w", encoding="utf-8") as f:
+		f.write(final + body)
+	os.replace(tmp, path)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -90,8 +144,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 		help="start each bot once and keep it running across all games "
 			"(e.g. for training); by default bots are restarted every game")
 	parser.add_argument("--log-file", metavar="PATH", default=None,
-		help="write a log with the settings, bot commands and every hand to "
-			"PATH (written in full even with --quiet)")
+		help="write a log to PATH: results and settings at the top, then "
+			"every hand (written in full even with --quiet)")
 	parser.add_argument("--quiet", action="store_true")
 	args = parser.parse_args(argv)
 
@@ -104,27 +158,40 @@ def main(argv: Optional[List[str]] = None) -> int:
 	if seed_was_random:
 		args.seed = random.SystemRandom().randrange(2 ** 32)
 
+	started = datetime.now()
+	run_info = run_info_lines(args, argv, seed_was_random)
+	provisional = header_text("running (incomplete)", started, None,
+		["results:          not available yet"], run_info)
+
 	log_file = None
 	if args.log_file:
 		try:
 			parent = os.path.dirname(os.path.abspath(args.log_file))
 			os.makedirs(parent, exist_ok=True)
 			log_file = open(args.log_file, "w", encoding="utf-8")
+			log_file.write(provisional)
+			log_file.flush()
 		except OSError as e:
 			print(f"Error: can't open log file: {e}", file=sys.stderr)
 			return 1
 
+	log = EngineLog(verbose=not args.quiet, file=log_file)
+	status, result, code = "interrupted", None, 1
 	try:
-		log = EngineLog(verbose=not args.quiet, file=log_file)
-		started = datetime.now()
-		log_header(log, args, argv, seed_was_random, started)
-		return run(args, log, started)
+		result, error = run(args, log)
+		status = "completed" if error is None else f"failed: {error}"
+		code = 0 if error is None else 1
 	finally:
 		if log_file is not None:
 			log_file.close()
+			final = header_text(status, started, datetime.now(),
+				result_lines(args, result), run_info)
+			finalize_log(args.log_file, provisional, final)
+	return code
 
 
-def run(args, log: EngineLog, started: datetime) -> int:
+def run(args, log: EngineLog):
+	"""Play the games. Returns (result, None) or (None, error message)."""
 	def announce(i: int):
 		if args.games > 1:
 			log.info(f"##### Game {i + 1}/{args.games} #####")
@@ -136,28 +203,18 @@ def run(args, log: EngineLog, started: datetime) -> int:
 			logger=log)
 	except (ValueError, OSError) as e:
 		log.warn(f"Error: {e}")
-		return 1
+		return None, str(e)
 
+	# console only: the log file gets these at the top when it's finalized
 	if args.games == 1:
-		# the game already logged its standings when verbose
 		if args.quiet:
 			for s in result["games"][0]:
 				print(f"{s['place']}. seat {s['seat']} ({s['money']} chips)")
 	else:
-		log.result(f"Summary over {args.games} games:")
-		log.result(f"  {'seat':>4}  {'wins':>5}  {'avg place':>9}  "
-			f"{'finishes 1st,2nd..':<18}  bot")
-		for s in result["summary"]:
-			places = " ".join(str(c) for c in s["places"])
-			log.result(f"  {s['seat']:>4}  {s['wins']:>5}  {s['average_place']:>9.2f}"
-				f"  {places:<18}  {s['bot']}")
-
-	finished = datetime.now()
-	elapsed = (finished - started).total_seconds()
-	log.file_only("")
-	log.file_only(f"finished:         {finished.isoformat(timespec='seconds')}"
-		f" ({elapsed:.1f}s)")
-	return 0
+		print(f"Summary over {args.games} games:")
+		for line in summary_table(result["summary"]):
+			print(line)
+	return result, None
 
 
 if __name__ == "__main__":

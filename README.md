@@ -35,12 +35,19 @@ game is the same as a single-game run with that seed.
 
 ### Log files
 
-`--log-file runs/match.log` writes a plain-text log (parent folders are created). It starts with a
-header listing the start time, the full command line, the working directory, every setting
-(including the seed actually used) and each seat's bot command, with the executable and
-script resolved to absolute paths. After that comes the full hand-by-hand log, written even
-with `--quiet`, then engine warnings (bot timeouts, crashes, invalid replies), the
-standings or multi-game summary, and the finish time. Bots' own stderr is not captured.
+`--log-file runs/match.log` writes a plain-text log (parent folders are created), laid out as:
+
+1. **Status and results** — `completed`, `failed: ...` or `interrupted`, start/finish times and
+   duration, then the final standings (single game) or the multi-game summary table plus each
+   game's seed, hand count and finishing order.
+2. **Run data** — the full command line, working directory, every setting (including the seed
+   actually used) and each seat's bot command, with the executable and script resolved to
+   absolute paths.
+3. **Hand log** — every hand, written even with `--quiet`, plus engine warnings (bot timeouts,
+   crashes, invalid replies). Bots' own stderr is not captured.
+
+The hand log is streamed to the file during the run, so a crashed or killed run still leaves
+everything played so far; the results block is filled in when the run ends.
 
 To replay a logged run, pass the logged seed back with `--seed` and the same settings.
 

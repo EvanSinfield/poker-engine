@@ -40,13 +40,15 @@ def run_games(num_games: int, seed: Optional[float], start_money: int,
 	across games (e.g. reinforcement learning); after the last game it is
 	sent a "match_over" message and its stdin is closed.
 
-	Returns {"games": [standings, ...], "summary": [per-seat stats]}."""
+	Returns {"games": [standings, ...], "hands": [hands played per game],
+	"summary": [per-seat stats]}."""
 	if num_games < 1:
 		raise ValueError("Number of games must be at least 1.")
 
 	warn = logger.warn if logger else None
 	manager = PlayerManager(paths, timeout, warn=warn) if persistent_bots else None
 	all_standings = []
+	hands = []
 	try:
 		for i in range(num_games):
 			if on_game_start:
@@ -55,6 +57,7 @@ def run_games(num_games: int, seed: Optional[float], start_money: int,
 				timeout=timeout, player_manager=manager, game_number=i + 1,
 				num_games=num_games, logger=logger, **game_kwargs)
 			all_standings.append(game.run())
+			hands.append(game.game_state.hand_number)
 
 		summary = summarize(all_standings, paths)
 		if manager is not None:
@@ -65,7 +68,7 @@ def run_games(num_games: int, seed: Optional[float], start_money: int,
 					"seat": seat,
 					"summary": summary,
 				})
-		return {"games": all_standings, "summary": summary}
+		return {"games": all_standings, "hands": hands, "summary": summary}
 	finally:
 		if manager is not None:
 			manager.close()
