@@ -1,18 +1,21 @@
 import json
 import sys
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from poker_engine.domain.actions import Action, parse_action
 from poker_engine.player.player import Player
 
 
 class PlayerManager:
-	def __init__(self, paths: List[str], timeout: float = 10.0):
+	def __init__(self, paths: List[str], timeout: float = 10.0,
+			warn: Optional[Callable[[str], None]] = None):
 		self.timeout = timeout
+		self.warn = warn or (lambda msg: print(msg, file=sys.stderr))
 		self.players: List[Player] = []
 		try:
 			for i, p in enumerate(paths):
-				self.players.append(Player(p, name=f"seat {i}: {p}"))
+				self.players.append(Player(p, name=f"seat {i}: {p}",
+					warn=self.warn))
 		except OSError:
 			self.close()
 			raise
@@ -37,8 +40,8 @@ class PlayerManager:
 			return None
 		action = parse_action(output)
 		if action is None:
-			print(f"[engine] player {player.name!r} sent invalid action: "
-				f"{output.strip()!r}", file=sys.stderr)
+			self.warn(f"[engine] player {player.name!r} sent invalid action: "
+				f"{output.strip()!r}")
 		return action
 
 

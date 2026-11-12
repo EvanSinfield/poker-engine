@@ -15,13 +15,14 @@ Or `pip install -e .` and use the `poker-engine` command.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--seed` | random | seed for shuffling (games are reproducible for deterministic bots) |
+| `--seed` | random | seed for shuffling (games are reproducible for deterministic bots); if omitted one is picked and written to the log file |
 | `--money` | 1000 | starting chips per player |
 | `--blind` | 10 | starting small blind (big blind is 2x); doubles every orbit of the button |
 | `--timeout` | 10 | seconds a bot has to answer an action request |
 | `--max-hands` | none | stop after this many hands (per game) |
 | `--games` | 1 | number of games to play; with more than one, a summary of wins, average place and finishing positions per seat is printed at the end |
 | `--persistent-bots` | off | keep each bot process running across all `--games` (see below) |
+| `--log-file` | none | write a log file to this path (see below) |
 | `--quiet` | off | only print final standings |
 
 Each bot argument is a command line (split with shell rules), so arguments are allowed.
@@ -31,6 +32,24 @@ With `--games N`, every game starts fresh bot processes by default, so bots keep
 between games. Add `--persistent-bots` to start each bot once and keep it running for the
 whole run, e.g. so a reinforcement-learning bot can update its policy from game to game. With `--seed S`, game *i* (counting from 0) is seeded with `S + i`, so the first
 game is the same as a single-game run with that seed.
+
+### Log files
+
+`--log-file runs/match.log` writes a plain-text log (parent folders are created), laid out as:
+
+1. **Status and results** — `completed`, `failed: ...` or `interrupted`, start/finish times and
+   duration, then the final standings (single game) or the multi-game summary table plus each
+   game's seed, hand count and finishing order.
+2. **Run data** — the full command line, working directory, every setting (including the seed
+   actually used) and each seat's bot command, with the executable and script resolved to
+   absolute paths.
+3. **Hand log** — every hand, written even with `--quiet`, plus engine warnings (bot timeouts,
+   crashes, invalid replies). Bots' own stderr is not captured.
+
+The hand log is streamed to the file during the run, so a crashed or killed run still leaves
+everything played so far; the results block is filled in when the run ends.
+
+To replay a logged run, pass the logged seed back with `--seed` and the same settings.
 
 Tests: `PYTHONPATH=src python3 -m unittest discover -s tests`
 

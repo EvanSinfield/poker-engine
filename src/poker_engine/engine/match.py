@@ -1,6 +1,7 @@
 from typing import Callable, List, Optional
 
 from poker_engine.engine.game import Game
+from poker_engine.engine.log import EngineLog
 from poker_engine.player.manager import PlayerManager
 
 
@@ -31,7 +32,7 @@ def summarize(all_standings: List[List[dict]], paths: List[str]) -> List[dict]:
 def run_games(num_games: int, seed: Optional[float], start_money: int,
 		paths: List[str], on_game_start: Optional[Callable[[int], None]] = None,
 		persistent_bots: bool = False, timeout: float = 10.0,
-		**game_kwargs) -> dict:
+		logger: Optional[EngineLog] = None, **game_kwargs) -> dict:
 	"""Play num_games games between the same bots.
 
 	By default every game starts fresh bot processes. With persistent_bots
@@ -39,20 +40,24 @@ def run_games(num_games: int, seed: Optional[float], start_money: int,
 	across games (e.g. reinforcement learning); after the last game it is
 	sent a "match_over" message and its stdin is closed.
 
-	Returns {"games": [standings, ...], "summary": [per-seat stats]}."""
+	Returns {"games": [standings, ...], "hands": [hands played per game],
+	"summary": [per-seat stats]}."""
 	if num_games < 1:
 		raise ValueError("Number of games must be at least 1.")
 
-	manager = PlayerManager(paths, timeout) if persistent_bots else None
+	warn = logger.warn if logger else None
+	manager = PlayerManager(paths, timeout, warn=warn) if persistent_bots else None
 	all_standings = []
+	hands = []
 	try:
 		for i in range(num_games):
 			if on_game_start:
 				on_game_start(i)
 			game = Game(game_seed(seed, i), len(paths), start_money, paths,
 				timeout=timeout, player_manager=manager, game_number=i + 1,
-				num_games=num_games, **game_kwargs)
+				num_games=num_games, logger=logger, **game_kwargs)
 			all_standings.append(game.run())
+			hands.append(game.game_state.hand_number)
 
 		summary = summarize(all_standings, paths)
 		if manager is not None:
@@ -63,7 +68,7 @@ def run_games(num_games: int, seed: Optional[float], start_money: int,
 					"seat": seat,
 					"summary": summary,
 				})
-		return {"games": all_standings, "summary": summary}
+		return {"games": all_standings, "hands": hands, "summary": summary}
 	finally:
 		if manager is not None:
 			manager.close()
