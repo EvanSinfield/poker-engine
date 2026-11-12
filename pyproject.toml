@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poker-engine"
+version = "0.1.0"
+description = "No-limit hold'em engine for bots that talk over stdin/stdout"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+
+[project.scripts]
+poker-engine = "poker_engine.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

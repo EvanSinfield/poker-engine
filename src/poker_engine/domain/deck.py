@@ -1,4 +1,7 @@
+from typing import List
+
 from poker_engine.domain.card import Card, Suit, Value
+
 
 def create_deck() -> List[Card]:
 	deck = []
