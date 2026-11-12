@@ -19,11 +19,16 @@ Or `pip install -e .` and use the `poker-engine` command.
 | `--money` | 1000 | starting chips per player |
 | `--blind` | 10 | starting small blind (big blind is 2x); doubles every orbit of the button |
 | `--timeout` | 10 | seconds a bot has to answer an action request |
-| `--max-hands` | none | stop after this many hands |
+| `--max-hands` | none | stop after this many hands (per game) |
+| `--games` | 1 | number of games to play; with more than one, a summary of wins, average place and finishing positions per seat is printed at the end |
 | `--quiet` | off | only print final standings |
 
 Each bot argument is a command line (split with shell rules), so arguments are allowed.
 Players are eliminated at 0 chips; the game ends when one player remains.
+
+With `--games N`, every game starts fresh bot processes, so bots keep no state between
+games. With `--seed S`, game *i* (counting from 0) is seeded with `S + i`, so the first
+game is the same as a single-game run with that seed.
 
 Tests: `PYTHONPATH=src python3 -m unittest discover -s tests`
 
